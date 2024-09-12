@@ -1,64 +1,54 @@
 services:
   tailscale:
-    image: tailscale/tailscale:latest
-    container_name: tailscale
-    restart: unless-stopped
-    hostname: aigency-tailnet
-    cap_add:
-      - NET_ADMIN
-      - SYS_MODULE
-    env_file:
-      - .env
-    environment:
-      - TS_HOSTNAME=aigency-tailnet
-      - TS_AUTHKEY=${TS_KEY}
-      - TS_SERVE_CONFIG=/packages/config/nginx.json
-      - TS_STATE_DIR=/var/lib/tailscale
-      - TS_ROUTES=10.0.0.0/12
-      - TS_USERSPACE=false
-      - "TS_EXTRA_ARGS=--hostname=aigency-tailnet --advertise-tags=tag:aigency --exit-node=aigency-tailnet --advertise-exit-node --exit-node-allow-lan-access --advertise-routes=10.0.0.0/12 --ssh --ts-auth=${TS_KEY}"
-    network_mode: host
+    image: tailscale/tailscale
     volumes:
       - ./tailscale:/var/lib/tailscale
       - /dev/net/tun:/dev/net/tun
-  nginx:
-    image: nginx
-    container_name: tailscale-web
-    network_mode: service:tailscale
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - TS_AUTH_KEY=${TS_AUTH_KEY}
+      - TS_ROUTES=10.0.0.0/24
+    network_mode: host
+
   openhands:
     image: ghcr.io/all-hands-ai/openhands:main
     pull_policy: always
     environment:
       - SANDBOX_RUNTIME_CONTAINER_IMAGE=ghcr.io/all-hands-ai/runtime:0.9-nikolaik
       - SANDBOX_USER_ID=${SANDBOX_USER_ID:-1000}
-      - WORKSPACE_MOUNT_PATH=/workspace
+      - WORKSPACE_MOUNT_PATH=/opt/workspace
     volumes:
-      - ./workspace:/workspace
+      - ./workspace:/opt/workspace
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
       - "3000:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    network_mode: service:tailscale
+    networks:
+      - agent_net
 
   agent-zero:
     build:
       context: ./agent-zero
       dockerfile: Dockerfile
     volumes:
-      - ./workspace:/workspace
+      - ./workspace:/opt/workspace
     environment:
       - OPENHANDS_API_URL=http://openhands:8080/api/web-search
-      - WORKSPACE_PATH=/workspace
-    network_mode: service:tailscale
+      - WORKSPACE_PATH=/opt/workspace
+    networks:
+      - agent_net
 
   aider:
-    image: aider:latest  # Replace with the actual Aider image or build configuration
+    image: paulgauthier/aider-full  # Replace with the actual Aider image or build configuration
     volumes:
-      - ./workspace:/workspace
+      - ./workspace:/opt/workspace
     environment:
-      - WORKSPACE_PATH=/workspace
-    network_mode: service:tailscale
+      - WORKSPACE_PATH=/opt/workspace
+    networks:
+      - agent_net
 
   frontend:
     build:
@@ -67,12 +57,11 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ./frontend:/app
-      - /app/node_modules
-      - ./workspace:/workspace
+      - ./workspace:/opt/workspace
     environment:
-      - WORKSPACE_PATH=/workspace
-    network_mode: service:tailscale
+      - WORKSPACE_PATH=/opt/workspace
+    networks:
+      - agent_net
 
   backend:
     build:
@@ -81,24 +70,135 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./backend:/app
-      - ./workspace:/workspace
+      - ./workspace:/opt/workspace
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/bunny_warren
-      - WORKSPACE_PATH=/workspace
-    network_mode: service:tailscale
+      - WORKSPACE_PATH=/opt/workspace
+    networks:
+      - agent_net
 
-  db:
-    image: postgres:13
-    environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=bunny_warren
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    network_mode: service:tailscale
+  # db:
+  #   image: postgres:latest
+  #   environment:
+  #     - POSTGRES_USER=postagres
+  #     - POSTGRES_PASSWORD=postgres
+  #     - POSTGRES_DB=bunny_warren
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+  #   networks:
+  #     - agent_net
 
-volumes:
-  pgdata:
-  tailscale:
-    driver: local
+networks:
+  agent_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.0.0.0/24
+
+# volumes:
+  # pgdata:
+
+# services:
+#   tailscale:
+#     image: tailscale/tailscale:latest
+#     container_name: tailscale
+#     restart: unless-stopped
+#     hostname: aigency-tailnet
+#     cap_add:
+#       - NET_ADMIN
+#       - SYS_MODULE
+#     env_file:
+#       - .env
+#     environment:
+#       - TS_HOSTNAME=aigency-tailnet
+#       - TS_AUTHKEY=${TS_KEY}
+#       - TS_SERVE_CONFIG=/packages/config/nginx.json
+#       - TS_STATE_DIR=/var/lib/tailscale
+#       - TS_ROUTES=10.0.0.0/12
+#       - TS_USERSPACE=false
+#       - "TS_EXTRA_ARGS=--hostname=aigency-tailnet --advertise-tags=tag:aigency --exit-node=aigency-tailnet --advertise-exit-node --exit-node-allow-lan-access --advertise-routes=10.0.0.0/12 --ssh --ts-auth=${TS_KEY}"
+#     network_mode: host
+#     volumes:
+#       - ./tailscale:/var/lib/tailscale
+#       - /dev/net/tun:/dev/net/tun
+#   nginx:
+#     image: nginx
+#     container_name: tailscale-web
+#     network_mode: service:tailscale
+#   openhands:
+#     image: ghcr.io/all-hands-ai/openhands:main
+#     pull_policy: always
+#     environment:
+#       - SANDBOX_RUNTIME_CONTAINER_IMAGE=ghcr.io/all-hands-ai/runtime:0.9-nikolaik
+#       - SANDBOX_USER_ID=${SANDBOX_USER_ID:-1000}
+#       - WORKSPACE_MOUNT_PATH=/workspace
+#     volumes:
+#       - ./workspace:/workspace
+#       - /var/run/docker.sock:/var/run/docker.sock
+#     ports:
+#       - "3000:3000"
+#     extra_hosts:
+#       - "host.docker.internal:host-gateway"
+#     network_mode: service:tailscale
+
+#   agent-zero:
+#     build:
+#       context: ./agent-zero
+#       dockerfile: Dockerfile
+#     volumes:
+#       - ./workspace:/workspace
+#     environment:
+#       - OPENHANDS_API_URL=http://openhands:8080/api/web-search
+#       - WORKSPACE_PATH=/workspace
+#     network_mode: service:tailscale
+
+#   aider:
+#     image: aider:latest  # Replace with the actual Aider image or build configuration
+#     volumes:
+#       - ./workspace:/workspace
+#     environment:
+#       - WORKSPACE_PATH=/workspace
+#     network_mode: service:tailscale
+
+#   frontend:
+#     build:
+#       context: ./frontend
+#       dockerfile: Dockerfile
+#     ports:
+#       - "3000:3000"
+#     volumes:
+#       - ./frontend:/app
+#       - /app/node_modules
+#       - ./workspace:/workspace
+#     environment:
+#       - WORKSPACE_PATH=/workspace
+#     network_mode: service:tailscale
+
+#   backend:
+#     build:
+#       context: ./backend
+#       dockerfile: Dockerfile
+#     ports:
+#       - "8000:8000"
+#     volumes:
+#       - ./backend:/app
+#       - ./workspace:/workspace
+#     environment:
+#       - DATABASE_URL=postgresql://user:password@db:5432/bunny_warren
+#       - WORKSPACE_PATH=/workspace
+#     network_mode: service:tailscale
+
+#   db:
+#     image: postgres:13
+#     environment:
+#       - POSTGRES_USER=user
+#       - POSTGRES_PASSWORD=password
+#       - POSTGRES_DB=bunny_warren
+#     volumes:
+#       - pgdata:/var/lib/postgresql/data
+#     network_mode: service:tailscale
+
+# volumes:
+#   pgdata:
+#   tailscale:
+#     driver: local
