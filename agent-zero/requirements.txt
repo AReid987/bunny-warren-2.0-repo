@@ -56,7 +56,7 @@ jsonpatch==1.33
 jsonpointer==3.0.0
 langchain==0.2.16
 langchain-anthropic==0.1.19
-langchain-community==0.2.7
+langchain-community==0.2.9
 langchain-core==0.2.39
 langchain-google-genai==1.0.7
 langchain-groq==0.1.6
